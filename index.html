@@ -1476,16 +1476,94 @@ async function scanMusicFolder() {
   return found;
 }
 
-async function loadDurations(list) {
-  loaderMsg.textContent = 'Loading track info…';
-  return Promise.all(list.map(song => new Promise(resolve => {
-    if (song.duration) return resolve(song);
+/* ======================== DURATION CACHE ======================== */
+const CACHE_KEY = 'library_durations_v1';
+
+function loadDurationCache() {
+  try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function saveDurationCache(cache) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); }
+  catch {} // storage full — silently skip
+}
+
+// Apply cached durations instantly (no network), return list of songs still missing
+function applyCachedDurations(list) {
+  const cache = loadDurationCache();
+  const missing = [];
+  list.forEach(song => {
+    if (song.duration) return; // already known (e.g. local file loaded twice)
+    const cached = cache[song.url];
+    if (cached != null) song.duration = cached;
+    else missing.push(song);
+  });
+  return missing;
+}
+
+// Fetch durations for a list of songs, update cache, re-render as each one resolves
+function loadDurationsBackground(list) {
+  if (!list.length) return;
+  const cache = loadDurationCache();
+  let dirty = false;
+
+  list.forEach(song => {
     const a = new Audio();
     a.preload = 'metadata';
-    a.onloadedmetadata = () => { song.duration = a.duration; resolve(song); };
-    a.onerror = () => { song.duration = null; resolve(song); };
+    a.onloadedmetadata = () => {
+      song.duration = a.duration;
+      cache[song.url] = a.duration;
+      dirty = true;
+      // Persist every 10 resolved songs to avoid hammering localStorage
+      if (++loadDurationsBackground._count % 10 === 0) saveDurationCache(cache);
+      // Update just this song's duration display without full re-render
+      patchDurationInDOM(song);
+    };
+    a.onerror = () => { song.duration = null; };
     a.src = song.url;
-  })));
+  });
+
+  // Final save after a short delay to catch the tail
+  setTimeout(() => { if (dirty) saveDurationCache(cache); }, 3000);
+}
+loadDurationsBackground._count = 0;
+
+// Patch duration text in DOM for a single song without re-rendering everything
+function patchDurationInDOM(song) {
+  const durText = song.duration ? fmt(song.duration) : '—';
+  // Grid cards
+  document.querySelectorAll('.song-card').forEach(card => {
+    const idx = parseInt(card.dataset.idx);
+    if (filteredSongs[idx] === song) {
+      const el = card.querySelector('.song-card-dur');
+      if (el) el.textContent = durText;
+    }
+  });
+  // List items
+  document.querySelectorAll('.list-item').forEach(item => {
+    const idx = parseInt(item.dataset.idx);
+    if (filteredSongs[idx] === song) {
+      const el = item.querySelector('.li-dur');
+      if (el) el.textContent = durText;
+    }
+  });
+  // Queue items
+  document.querySelectorAll('.queue-item').forEach(item => {
+    const idx = parseInt(item.dataset.idx);
+    if (filteredSongs[idx] === song) {
+      const el = item.querySelector('.qi-dur');
+      if (el) el.textContent = durText;
+    }
+  });
+  // Player bar if this song is now playing
+  if (currentIndex !== -1 && filteredSongs[currentIndex] === song) {
+    const sub = (song.genre ? song.genre.charAt(0).toUpperCase() + song.genre.slice(1) + ' · ' : '')
+      + song.name.split('.').pop().toUpperCase()
+      + (song.duration ? ' · ' + fmt(song.duration) : '');
+    document.getElementById('player-sub').textContent = sub;
+    document.getElementById('player-mini-sub').textContent = sub;
+  }
 }
 
 /* ======================== ROUTING (hash-based) ======================== */
@@ -1938,12 +2016,13 @@ document.getElementById('file-input').addEventListener('change', e => {
   const files = [...e.target.files];
   const newSongs = files.map(f => ({ name: f.name, url: URL.createObjectURL(f), size: f.size, genre: null }));
   allSongs = [...allSongs, ...newSongs];
-  // Add to a "Local" genre
   if (!genres['local']) genres['local'] = [];
   genres['local'] = [...genres['local'], ...newSongs];
+  // Render immediately, then load durations in background
   applyRoute(currentGenre);
   buildNav();
-  loadDurations(newSongs).then(() => renderAll());
+  const missing = applyCachedDurations(newSongs);
+  loadDurationsBackground(missing);
   notify(`Loaded ${files.length} track${files.length !== 1 ? 's' : ''}`);
 });
 
@@ -1980,7 +2059,6 @@ async function init() {
     const found = await scanMusicFolder();
     allSongs = found._all || [];
     delete found._all;
-    // Only keep genres that have songs
     Object.entries(found).forEach(([k, v]) => {
       if (v && v.length > 0) genres[k] = v;
     });
@@ -1988,11 +2066,12 @@ async function init() {
     console.warn('Scan failed:', e);
   }
 
-  await loadDurations(allSongs);
+  // Step 1: instantly apply any durations already in cache — no network needed
+  const missing = applyCachedDurations(allSongs);
 
   buildNav();
 
-  // Apply initial route from hash
+  // Step 2: render immediately with whatever durations we have (cached = filled, rest = —)
   const initGenre = getRouteGenre();
   applyRoute(initGenre);
 
@@ -2002,6 +2081,9 @@ async function init() {
   if (!allSongs.length) {
     notify('No tracks found — use "Load local files" to get started');
   }
+
+  // Step 3: quietly fetch missing durations in the background, patch DOM as each resolves
+  loadDurationsBackground(missing);
 }
 
 init();
