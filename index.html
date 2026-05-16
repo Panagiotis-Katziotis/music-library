@@ -72,6 +72,7 @@
     grid-template-rows: 1fr var(--player-h);
     height: 100vh;
     height: 100dvh;
+    overflow: hidden;
   }
 
   .main {
@@ -926,17 +927,39 @@
 
   /* ======================== MOBILE ======================== */
   @media (max-width: 768px) {
-    :root {
-      --player-h: auto;
-    }
-
+    /* Use dvh so the real visible area is used (accounts for browser chrome) */
     .app {
-      grid-template-rows: 1fr auto;
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      height: 100vh; /* fallback */
+      overflow: hidden;
     }
 
+    /* Main takes all remaining space above the player */
     .main {
+      flex: 1 1 0;
+      min-height: 0;      /* critical: allows flex child to shrink below content size */
       grid-template-columns: 1fr;
       position: relative;
+      overflow: hidden;
+    }
+
+    /* Content area must scroll internally, not rely on body scroll */
+    .content {
+      height: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Player stays at bottom, shrinks/grows but never pushes content off screen */
+    .player {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      height: auto;
+      border-top: 1px solid rgba(255,255,255,0.06);
     }
 
     /* Sidebar slides in from left on mobile */
@@ -1002,15 +1025,6 @@
 
     .sort-select { display: none; }
 
-    /* Mobile player: compact strip */
-    .player {
-      display: flex;
-      flex-direction: column;
-      padding: 0;
-      height: auto;
-      border-top: 1px solid rgba(255,255,255,0.06);
-    }
-
     /* Mini player bar always visible */
     .player-mini {
       display: flex;
@@ -1073,7 +1087,7 @@
       transition: width 0.1s linear;
     }
 
-    /* Full player panel (expanded) */
+    /* Full player panel (expanded) — clips to a safe max so it never overflows */
     .player-full {
       max-height: 0;
       overflow: hidden;
@@ -1081,7 +1095,7 @@
     }
 
     .player-full.open {
-      max-height: 300px;
+      max-height: min(300px, 40dvh);
     }
 
     .player-full-inner {
