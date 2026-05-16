@@ -1087,6 +1087,38 @@
       transition: width 0.1s linear;
     }
 
+    /* Time + seekbar always visible below the thin strip */
+    .player-mini-timebar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 16px 4px;
+    }
+
+    .player-mini-timebar .time-label {
+      font-size: 10px;
+      color: var(--player-text2);
+      min-width: 28px;
+      text-align: center;
+    }
+
+    .player-mini-timebar .progress-track {
+      flex: 1;
+      height: 3px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 2px;
+      cursor: pointer;
+    }
+
+    .player-mini-timebar .progress-fill {
+      height: 100%;
+      background: var(--player-text);
+      border-radius: 2px;
+      width: 0%;
+      pointer-events: none;
+      transition: width 0.1s linear;
+    }
+
     /* Full player panel (expanded) — clips to a safe max so it never overflows */
     .player-full {
       max-height: 0;
@@ -1095,14 +1127,14 @@
     }
 
     .player-full.open {
-      max-height: min(300px, 40dvh);
+      max-height: min(240px, 35dvh);
     }
 
     .player-full-inner {
-      padding: 12px 20px 20px;
+      padding: 6px 20px 14px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 10px;
     }
 
     .player-now { display: none; }
@@ -1111,7 +1143,8 @@
 
     /* Show full controls */
     .player-full .player-controls { justify-content: center; gap: 12px; }
-    .player-full .player-progress { max-width: 100%; }
+    /* Hide the progress block inside the expanded panel — it's now always visible above */
+    .player-full .player-progress { display: none; }
 
     .notif {
       bottom: calc(var(--mobile-player-h) + 12px);
@@ -1286,6 +1319,14 @@
     </div>
     <div class="player-mini-progress" id="player-mini-progress" style="display:none">
       <div class="player-mini-fill" id="player-mini-fill"></div>
+    </div>
+    <!-- Always-visible timebar (mobile only, shown via JS) -->
+    <div class="player-mini-timebar" id="player-mini-timebar" style="display:none">
+      <span class="time-label" id="time-cur-m2">0:00</span>
+      <div class="progress-track" id="progress-track-m2">
+        <div class="progress-fill" id="progress-fill-m2"></div>
+      </div>
+      <span class="time-label" id="time-total-m2">0:00</span>
     </div>
     <div class="player-full" id="player-full">
       <div class="player-full-inner">
@@ -1854,10 +1895,13 @@ audio.addEventListener('timeupdate', () => {
   document.getElementById('progress-fill').style.width = pct + '%';
   document.getElementById('progress-fill-m').style.width = pct + '%';
   document.getElementById('player-mini-fill').style.width = pct + '%';
+  document.getElementById('progress-fill-m2').style.width = pct + '%';
   document.getElementById('time-cur').textContent = fmt(audio.currentTime);
   document.getElementById('time-cur-m').textContent = fmt(audio.currentTime);
+  document.getElementById('time-cur-m2').textContent = fmt(audio.currentTime);
   document.getElementById('time-total').textContent = fmt(audio.duration);
   document.getElementById('time-total-m').textContent = fmt(audio.duration);
+  document.getElementById('time-total-m2').textContent = fmt(audio.duration);
 });
 
 function seekTo(e, track) {
@@ -1868,6 +1912,7 @@ function seekTo(e, track) {
 
 document.getElementById('progress-track').addEventListener('click', e => seekTo(e, document.getElementById('progress-track')));
 document.getElementById('progress-track-m').addEventListener('click', e => seekTo(e, document.getElementById('progress-track-m')));
+document.getElementById('progress-track-m2').addEventListener('click', e => seekTo(e, document.getElementById('progress-track-m2')));
 
 // Volume
 document.getElementById('vol-slider').addEventListener('input', e => { audio.volume = e.target.value / 100; });
@@ -1989,15 +2034,19 @@ function setupResponsive() {
   const rightDesktop = document.getElementById('player-right-desktop');
   const playerFull = document.getElementById('player-full');
 
+  const timebarEl = document.getElementById('player-mini-timebar');
+
   if (isMobile) {
     miniEl.style.display = 'flex';
     miniProg.style.display = 'block';
+    timebarEl.style.display = 'flex';
     nowDesktop.style.display = 'none';
     centerDesktop.style.display = 'none';
     rightDesktop.style.display = 'none';
   } else {
     miniEl.style.display = 'none';
     miniProg.style.display = 'none';
+    timebarEl.style.display = 'none';
     playerFull.classList.remove('open');
     nowDesktop.style.display = 'flex';
     centerDesktop.style.display = 'flex';
