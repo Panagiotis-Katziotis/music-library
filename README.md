@@ -1,2 +1,2 @@
 # music-library
-music without copyrights
+music without the copyrights
